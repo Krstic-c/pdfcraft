@@ -124,20 +124,23 @@ fn telugu_ui_text_uses_craft_fonts() {
     }
 }
 
-/// On a machine with a suitable installed font, the installed definitions end every family
-/// with it and Arabic text has glyphs; the embedded-only definitions never name it.
+/// On a machine with a suitable installed font, the installed definitions end every family with
+/// one system-fallback face per missing script found, and Arabic text has glyphs; the
+/// embedded-only definitions name none of them.
 #[test]
 fn system_fallback_fills_missing_scripts() {
-    assert!(!theme::font_definitions().font_data.contains_key(theme::SYSTEM_FALLBACK));
+    let is_fallback = |n: &str| n.starts_with(theme::SYSTEM_FALLBACK);
+    assert!(!theme::font_definitions().font_data.keys().any(|n| is_fallback(n)));
     let defs = theme::installed_font_definitions(false);
-    if !defs.font_data.contains_key(theme::SYSTEM_FALLBACK) {
+    let slots = defs.font_data.keys().filter(|n| is_fallback(n)).count();
+    if slots == 0 {
         eprintln!("skipping system_fallback_fills_missing_scripts: no installed fallback font (or PDFCRAFT_SYSTEM_FONTS=0)");
-        assert!(defs.families.values().all(|stack| !stack.iter().any(|n| n == theme::SYSTEM_FALLBACK)));
+        assert!(defs.families.values().all(|stack| !stack.iter().any(|n| is_fallback(n))));
         return;
     }
     for (family, stack) in &defs.families {
-        assert_eq!(stack.last().map(String::as_str), Some(theme::SYSTEM_FALLBACK), "{family:?}: {stack:?}");
-        assert_eq!(stack.iter().filter(|n| *n == theme::SYSTEM_FALLBACK).count(), 1, "{family:?}");
+        let (own, fallback) = stack.split_at(stack.len() - slots);
+        assert!(!own.iter().any(|n| is_fallback(n)) && fallback.iter().all(|n| is_fallback(n)), "{family:?}: {stack:?}");
     }
     let mut fonts = Fonts::new(TextOptions::default(), defs);
     for id in families() {
@@ -145,6 +148,22 @@ fn system_fallback_fills_missing_scripts() {
         assert!(fonts.has_glyphs(&id, "PdfCraft"), "{id:?}");
     }
     assert!(layout_widths(&mut fonts, ARABIC).iter().all(|w| w.is_finite() && *w > 0.0));
+}
+
+/// The scenario in issue #728: without craft-fonts, on a machine with an installed CJK face
+/// (e.g. msyh.ttc on Windows, Hiragino Sans GB on macOS), the system fallback also covers
+/// Simplified Chinese — not just Arabic, since the two scripts need separate fallback slots
+/// (see `system_fonts.rs`).
+#[test]
+fn system_fallback_also_covers_chinese_where_available() {
+    let mut fonts = Fonts::new(TextOptions::default(), theme::installed_font_definitions(false));
+    if families().iter().all(|id| !fonts.has_glyphs(id, CHINESE)) {
+        eprintln!("skipping system_fallback_also_covers_chinese_where_available: no Han-capable system font found (or PDFCRAFT_SYSTEM_FONTS=0)");
+        return;
+    }
+    for id in families() {
+        assert!(fonts.has_glyphs(&id, CHINESE), "{id:?} lacks {CHINESE}");
+    }
 }
 
 /// Without craft-fonts the interface fonts still install and lay out any text (Japanese falls
