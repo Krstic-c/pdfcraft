@@ -16,6 +16,8 @@ use egui::FontData;
 
 /// Larger files are not read: a font path is still untrusted input.
 const MAX_BYTES: u64 = 32 << 20;
+/// Apple's Chinese collections (PingFang, STHeiti) exceed `MAX_BYTES`.
+const MAX_CHINESE_BYTES: u64 = 128 << 20;
 /// Faces tried in a collection (`.ttc`).
 const MAX_FACES: u32 = 16;
 /// Arabic letter alef: the default probe, for candidates expected to have broad coverage.
@@ -36,11 +38,11 @@ fn load() -> Vec<(char, Arc<FontData>)> {
         return Vec::new();
     }
     let mut found: Vec<(char, Arc<FontData>)> = Vec::new();
-    for (path, probe) in candidates() {
+    for (path, probe, max_bytes) in candidates() {
         if found.iter().any(|&(p, _)| p == probe) {
             continue;
         }
-        if let Some(data) = read(&path, probe) {
+        if let Some(data) = read(&path, probe, max_bytes) {
             found.push((probe, data));
         }
     }
@@ -48,23 +50,26 @@ fn load() -> Vec<(char, Arc<FontData>)> {
 }
 
 /// Well-known locations of faces with broad script coverage, best first, each paired with the
-/// character it must map to be accepted.
-fn candidates() -> Vec<(PathBuf, char)> {
+/// character it must map to be accepted and the size limit its file gets checked against.
+fn candidates() -> Vec<(PathBuf, char, u64)> {
     if cfg!(windows) {
         let dir = std::env::var_os("WINDIR").or_else(|| std::env::var_os("SystemRoot")).map_or_else(|| PathBuf::from(r"C:\Windows"), PathBuf::from);
-        [("msyh.ttc", HAN), ("segoeui.ttf", ARABIC), ("tahoma.ttf", ARABIC), ("arial.ttf", ARABIC)]
+        [("msyh.ttc", HAN, MAX_BYTES), ("segoeui.ttf", ARABIC, MAX_BYTES), ("tahoma.ttf", ARABIC, MAX_BYTES), ("arial.ttf", ARABIC, MAX_BYTES)]
             .iter()
-            .map(|(f, probe)| (dir.join("Fonts").join(f), *probe))
+            .map(|(f, probe, max_bytes)| (dir.join("Fonts").join(f), *probe, *max_bytes))
             .collect()
     } else if cfg!(target_os = "macos") {
         [
-            ("/System/Library/Fonts/Hiragino Sans GB.ttc", HAN),
-            ("/System/Library/Fonts/SFArabic.ttf", ARABIC),
-            ("/System/Library/Fonts/GeezaPro.ttc", ARABIC),
-            ("/System/Library/Fonts/Supplemental/Arial.ttf", ARABIC),
+            // The pre-2025 location; still the first place to look on older macOS.
+            ("/System/Library/Fonts/PingFang.ttc", HAN, MAX_CHINESE_BYTES),
+            ("/System/Library/Fonts/STHeiti Light.ttc", HAN, MAX_CHINESE_BYTES),
+            ("/System/Library/Fonts/STHeiti Medium.ttc", HAN, MAX_CHINESE_BYTES),
+            ("/System/Library/Fonts/SFArabic.ttf", ARABIC, MAX_BYTES),
+            ("/System/Library/Fonts/GeezaPro.ttc", ARABIC, MAX_BYTES),
+            ("/System/Library/Fonts/Supplemental/Arial.ttf", ARABIC, MAX_BYTES),
         ]
         .iter()
-        .map(|(f, probe)| (PathBuf::from(f), *probe))
+        .map(|(f, probe, max_bytes)| (PathBuf::from(f), *probe, *max_bytes))
         .collect()
     } else {
         let files = [
@@ -78,14 +83,14 @@ fn candidates() -> Vec<(PathBuf, char)> {
         ];
         ["/usr/share/fonts", "/usr/local/share/fonts"]
             .iter()
-            .flat_map(|dir| files.iter().map(move |(f, probe)| (Path::new(dir).join(f), *probe)))
+            .flat_map(|dir| files.iter().map(move |(f, probe)| (Path::new(dir).join(f), *probe, MAX_BYTES)))
             .collect()
     }
 }
 
-fn read(path: &Path, probe: char) -> Option<Arc<FontData>> {
+fn read(path: &Path, probe: char, max_bytes: u64) -> Option<Arc<FontData>> {
     let meta = std::fs::metadata(path).ok()?;
-    if !meta.is_file() || meta.len() > MAX_BYTES {
+    if !meta.is_file() || meta.len() > max_bytes {
         return None;
     }
     let bytes = std::fs::read(path).ok()?;
@@ -112,9 +117,9 @@ mod tests {
         assert_eq!(face_with(b"", ARABIC), None);
         assert_eq!(face_with(b"not a font at all", ARABIC), None);
         assert_eq!(face_with(&[0u8; 4096], ARABIC), None);
-        assert!(read(Path::new("definitely/not/here.ttf"), ARABIC).is_none());
+        assert!(read(Path::new("definitely/not/here.ttf"), ARABIC, MAX_BYTES).is_none());
         // A directory is not a font.
-        assert!(read(&std::env::temp_dir(), ARABIC).is_none());
+        assert!(read(&std::env::temp_dir(), ARABIC, MAX_BYTES).is_none());
     }
 
     #[test]
@@ -130,6 +135,6 @@ mod tests {
     fn candidates_are_absolute_font_files() {
         let list = candidates();
         assert!(!list.is_empty());
-        assert!(list.iter().all(|(p, _)| p.extension().is_some_and(|e| e == "ttf" || e == "ttc")));
+        assert!(list.iter().all(|(p, _, _)| p.extension().is_some_and(|e| e == "ttf" || e == "ttc")));
     }
 }
