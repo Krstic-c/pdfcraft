@@ -2,6 +2,16 @@
 
 （此前的历史未记录，当前状态见 upstream storytold/pdfcraft 及本仓库 commit 历史）
 
+## 2026-10-12
+
+- **fix(fonts): macOS 中文兜底真正落到苹方（PingFang SC Regular）**
+  - 起因：实际看起来不像苹方。查源码发现 macOS 上中文界面从没用过苹方，有两个叠加的根因：① macOS 26 把 `PingFang.ttc` 从 `/System/Library/Fonts` 挪进了 `/System/Library/AssetsV2/com_apple_MobileAsset_Font<N>/<hash>.asset/AssetData/`，旧路径不存在，候选链静默落到 `STHeiti Light.ttc`；② `face_with` 取的是"第一个含「中」字的 face"，而 STHeiti.ttc 的第 0 个是 Heiti TC（繁体）、PingFang.ttc 的第 0 个是 PingFang HK（港式），都不是简体。实际画中文的是 `STHeitiTC-Light`。
+  - 影响范围：`crates/ui-egui/src/system_fonts.rs`（新增 `Candidate` 结构；新增 AssetsV2 目录枚举，哈希和 `Font<N>` 编号随系统版本变所以靠列目录而不是写死；face 改为按 PostScript 名精确选取 `PingFangSC-Regular`；`MAX_FACES` 16→32，因为 PingFang.ttc 有 24 个 face）、`crates/ui-egui/tests/fonts.rs`（仅注释）。STHeiti 保留为"找不到苹方时"的最后兜底，且改选 SC face。
+  - 验证：新增 3 个单元测试，其中一个断言 macOS 上中文兜底必须是 `PingFangSC-Regular`；改前/改后同一界面截图对比，字形和标点位置确实变化；`ui-egui` 全量测试（46 个套件 640 项）、`clippy -D warnings`、`fmt --check` 全部通过。
+  - 注意：上一条里"PingFang/STHeiti 行高天然接近 Inter"的说法不准——实测 PingFang SC 自然行高 1.40 em（Inter 1.21 em）。但当前 egui 的行高取主字体（Inter），中文、英文、混排三种文本在 13px 下行高都是 15.5px，改后截图未见英文下沉。
+  - 未做：`medium`/`semibold` 家族里的中文仍用苹方 Regular（egui 兜底字体不分字重），标题加粗时中文不会变粗。需要的话可以另外为这两个家族单独挂 PingFang SC Medium/Semibold。
+  - 文档：`CLAUDE.md` 末尾新增"已知的坑"小节（字体路径会变、别取 `.ttc` 第一个 face、行高要量、测试 ok 可能是 skip、国内构建镜像）。
+
 ## 2026-10-10
 
 - **fix(fonts): 系统字体兜底改为每个脚本独立槛位**（`3b08f3f`）

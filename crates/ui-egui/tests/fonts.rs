@@ -151,7 +151,7 @@ fn system_fallback_fills_missing_scripts() {
 }
 
 /// The scenario in issue #728: without craft-fonts, on a machine with an installed CJK face
-/// (e.g. msyh.ttc on Windows, Hiragino Sans GB on macOS), the system fallback also covers
+/// (e.g. msyh.ttc on Windows, PingFang SC on macOS), the system fallback also covers
 /// Simplified Chinese — not just Arabic, since the two scripts need separate fallback slots
 /// (see `system_fonts.rs`).
 #[test]

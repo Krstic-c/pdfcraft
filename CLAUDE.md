@@ -45,3 +45,10 @@ PdfCraft is a clean-room, open-source, Rust-native PDF application targeting Ado
 
 ## Current bootstrap debt (tracked in STATUS.md)
 - `pdfcraft-render` renders through the `hayro` crate directly and inspects documents through `lopdf`. Both get replaced by `cos` / `model` / the DisplayList device (M1–M2, ADR-0004).
+
+## 已知的坑（custom 分支，fork 自维护，细节见 CHANGELOG.md）
+- **macOS 系统字体路径会变，别写死。** macOS 26 起 `PingFang.ttc` 不在 `/System/Library/Fonts`，而在 `/System/Library/AssetsV2/com_apple_MobileAsset_Font<N>/<hash>.asset/AssetData/`，哈希和 `N` 随系统版本变，`system_fonts.rs` 靠列目录去找。找不到时候选链会**静默**落到下一个字体，不报错，只能靠测试和截图发现。
+- **字体集合（`.ttc`）别取"第一个含该字的 face"。** PingFang.ttc 的第 0 个是 HK 变体，STHeiti 的第 0 个是 TC（繁体）。要按 PostScript 名选：`PingFangSC-Regular`、`STHeitiSC-Light`。
+- **字体行高要量，别信注释和经验。** PingFang SC 自然行高 1.40 em，Inter 是 1.21 em；egui 的行高取主字体（Inter），所以混排不会变高。改字体兜底后用 `cargo run -p pdfcraft-ui-egui --example shot -- out.png --language zh-hans` 看一眼，不要只看测试绿。
+- **测试"ok"可能是被 skip。** `tests/fonts.rs` 里依赖 craft-fonts 或系统字体的用例，条件不满足时直接 `return`，只在 `--nocapture` 下打印 `skipping ...`；没有 `CRAFT_FONTS_DIR` 时 `chinese_ui_text_prefers_the_chinese_face` 等都是 skip。
+- **本机（国内网络）构建环境。** `~/.cargo/bin` 不在非登录 shell 的 PATH 里，需 `export PATH="$HOME/.cargo/bin:$PATH"`。依赖用 rsproxy 镜像，不改全局配置、临时传参：`cargo --config 'source.crates-io.replace-with="rsproxy"' --config 'source.rsproxy.registry="sparse+https://rsproxy.cn/index/"' <cmd>`；rustup 装组件用 `RUSTUP_DIST_SERVER=https://rsproxy.cn RUSTUP_UPDATE_ROOT=https://rsproxy.cn/rustup rustup component add rustfmt clippy`。首次全量编译约 7 分钟。
