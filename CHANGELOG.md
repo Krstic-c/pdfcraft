@@ -11,6 +11,14 @@
   - 注意：上一条里"PingFang/STHeiti 行高天然接近 Inter"的说法不准——实测 PingFang SC 自然行高 1.40 em（Inter 1.21 em）。但当前 egui 的行高取主字体（Inter），中文、英文、混排三种文本在 13px 下行高都是 15.5px，改后截图未见英文下沉。
   - 未做：`medium`/`semibold` 家族里的中文仍用苹方 Regular（egui 兜底字体不分字重），标题加粗时中文不会变粗。需要的话可以另外为这两个家族单独挂 PingFang SC Medium/Semibold。
   - 文档：`CLAUDE.md` 末尾新增"已知的坑"小节（字体路径会变、别取 `.ttc` 第一个 face、行高要量、测试 ok 可能是 skip、国内构建镜像）。
+  - 提交：`d1254cd`（字体修复）、`c6207cd`（`.gitignore`），已 push 到 `custom`。
+
+- **release: 重新打包 macOS 并替换 `v0.5.0-custom` 的两个 macOS 资产**
+  - 做法：`packaging/macos/package.sh --arch aarch64`（本地，Apple Silicon，ad-hoc 签名未公证），构建自 `c6207cd`；`gh release upload --clobber` 覆盖 `pdfcraft-0.5.0-macos-aarch64.dmg` 和 `pdfcraft-cli-0.5.0-macos-aarch64.zip`。Windows 的 6 个文件没动，它们仍是 `3b08f3f` 的云端构建（本次字体改动只影响 macOS，行为一致）。
+  - 哈希：dmg `56a36cb8…6334f9`，cli zip `2058548f…ba425`，上传后与 release 资产 digest 核对一致。
+  - 环境：打包要两个"垫片"才能在国内网络跑通——`cargo` 加 rsproxy 镜像参数、`curl` 加 `--retry-all-errors`（OCR 模型从 S3 下载会随机 TLS 重置）；磁盘只剩 8 GiB 时先删了 `target/debug` 才够 release 构建。
+  - 踩坑：`--clobber` 是"先删后传"，上传中途 HTTP 408 重试期间 release 里短暂没有 dmg。下次若要零空窗，先传成临时名再改名，或在网络好的时候做。
+  - 注意：tag `v0.5.0-custom` 没有移动，仍指向旧 commit，所以 release 资产和 tag 的源码不是同一个 commit。
 
 ## 2026-10-10
 
